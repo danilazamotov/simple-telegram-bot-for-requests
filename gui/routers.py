@@ -1,5 +1,6 @@
 import asyncio
 import os
+import logging
 
 from aiogram import types, Dispatcher, Bot
 from aiogram.dispatcher.router import Router
@@ -9,7 +10,6 @@ from aiogram.types import ReplyKeyboardMarkup
 from aiogram.types import InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from dotenv import load_dotenv
-from sqlalchemy.testing.plugin.plugin_base import logging
 
 from database.DatabaseInitialize import requests_initialize_database
 from database.DatabaseManager import DatabaseManager
@@ -142,7 +142,7 @@ async def send_summary_to_accountant(bot_tg, accountant_id, request_id, approval
     db_manager = DatabaseManager(config)
     data = db_manager.get_request_data_by_id(request_id)
     if not data:
-        print("Данные по заявке не найдены")
+        logging.error("Данные по заявке не найдены")
         return
     message_text = f"️Итоговая информация о заявке id-{request_id}\n" \
                    f"Сотрудник: {data['manager_name']} \n" \
@@ -180,7 +180,7 @@ async def send_feedback_to_manager(request_id, status, str_data):
 
     data = db_manager.get_request_data_by_id(request_id)
     if not data:
-        print("Данные по заявке не найдены")
+        logging.error("Данные по заявке не найдены")
         return
 
     manager_id = data['manager_id']
@@ -197,7 +197,7 @@ async def send_feedback_to_manager(request_id, status, str_data):
 
 async def send_feedback_to_director(request_id, director, manager, status, data):
     if not data:
-        logging(f"Данные по заявке не найдены id-{request_id}")
+        logging.error(f"Данные по заявке не найдены id-{request_id}")
         return
 
     if status == 'принята бухгалтером':
@@ -271,7 +271,6 @@ def setup_routers(dp: Dispatcher):
     async def start_request(message: types.Message, state: FSMContext):
         await state.clear()
         await state.update_data(manager_id=message.from_user.id, manager_name=message.from_user.full_name)
-        # await state.set_state(RequestStates.manager_id)
         await message.answer(
             "Для продолжения используйте кнопку ниже для отправки вашего контакта или введите номер вручную",
             reply_markup=get_keyboard_request_phone_manager_buttons())
@@ -279,10 +278,11 @@ def setup_routers(dp: Dispatcher):
 
     @router_manager.message(RequestStates.phone_request)
     async def process_phone_request(message: types.Message, state: FSMContext):
-        try:
-            phone_number_user = str(message.contact.phone_number)
-        except:
-            phone_number_user = str(message.text)
+        phone_number_user = None
+        if message.contact:
+            phone_number_user = message.contact.phone_number
+        else:
+            phone_number_user = message.text
         await state.update_data(phone_request=phone_number_user)
         await message.answer("Введите дату платежа в формате дд.мм.гггг:",
                              reply_markup=get_keyboard_request_manager_buttons())
@@ -358,7 +358,6 @@ def setup_routers(dp: Dispatcher):
     async def process_phone_number(message: types.Message, state: FSMContext):
         await state.update_data(payment_phone_number=message.text)
         await message.answer("Введите ФИО получателя:")
-
         await state.set_state(RequestStates.payment_recipient_name)
 
     @router_manager.message(RequestStates.payment_recipient_name)
@@ -410,9 +409,7 @@ def setup_routers(dp: Dispatcher):
 
         if field_to_update:
             await state.update_data({field_to_update: message.text})
-
             await state.update_data(editing_field=None)
-
             await process_commission_payer(message, state, update_due_date=False)
         else:
             await message.answer("Ошибка: не найдено поле для обновления.")
@@ -432,7 +429,7 @@ def setup_routers(dp: Dispatcher):
         db_manager = DatabaseManager(config)
         try:
             request_id = db_manager.add_request(**data_to_send)
-            print(request_id)
+            logging.info(f"Request with id {request_id} added successfully")
             if request_id:
                 await query.message.answer(f"Заявка отправлена директору, ей присвоено id-{request_id}",
                                            reply_markup=get_keyboard_main_manager_buttons())
@@ -440,6 +437,7 @@ def setup_routers(dp: Dispatcher):
                     await send_summary_to_director(bot, director_id, request_id, data)
                     db_manager.update_request_approval(request_id=request_id, approval=True, role='manager')
         except Exception as e:
+            logging.error(f"Error while adding request: {e}")
             await query.message.answer(f"Возникла ошибка при отправке заявки, повторите попытку или обратитесь к администратору: {e}",
                                        reply_markup=get_keyboard_main_manager_buttons())
         finally:
@@ -548,7 +546,7 @@ def setup_routers(dp: Dispatcher):
         await state.clear()
         config = requests_initialize_database()
         db_manager = DatabaseManager(config)
-        if message.from_user.id == director_id:
+        if str(message.from_user.id) == str(director_id):
             unapproved_requests = db_manager.get_unapproved_requests_first(person='director')
             if unapproved_requests:
                 data_str = show_request_details(unapproved_requests)
@@ -562,9 +560,9 @@ def setup_routers(dp: Dispatcher):
                 builder = InlineKeyboardBuilder(markup=request_director_buttons).as_markup()
                 await message.answer("⚪" + data_str, reply_markup=builder)
             else:
-                await message.answer("Нет непринятых заявок.")
+                await message.answer("Нет непринятых заявок для директора.")
 
-        if message.from_user.id == accounting_id:
+        if str(message.from_user.id) == str(accounting_id):
             unapproved_requests = db_manager.get_unapproved_requests_first(person='accountant')
             if unapproved_requests:
                 data_str = show_request_details(unapproved_requests)
@@ -578,7 +576,7 @@ def setup_routers(dp: Dispatcher):
                 builder = InlineKeyboardBuilder(markup=request_director_buttons).as_markup()
                 await message.answer("⚪" + data_str, reply_markup=builder)
             else:
-                await message.answer("Нет непринятых заявок.")
+                await message.answer("Нет непринятых заявок для бухгалтера.")
         else:
             await message.answer("У вас нет полномочий использовать данную функцию")
 

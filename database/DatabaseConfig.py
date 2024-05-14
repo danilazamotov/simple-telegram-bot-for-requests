@@ -1,4 +1,4 @@
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker, scoped_session
 from sqlalchemy import create_engine, Column, Integer, String, Boolean
 
 
@@ -8,7 +8,7 @@ class DatabaseConfig:
     def __init__(self, database_path):
         self.database_path = database_path
         self.engine = create_engine(f'sqlite:///{database_path}')
-        self.Session = sessionmaker(bind=self.engine)
+        self.Session = scoped_session(sessionmaker(bind=self.engine))
 
     def get_db_path(self):
         return self.database_path
