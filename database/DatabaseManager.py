@@ -12,22 +12,43 @@ class DatabaseManager:
         self.config = config
         self.Session = config.Session
 
-    def add_request(self, **kwargs):
-        session = self.Session()
+    def add_request(self, manager_id, manager_name, phone_request, payment_date, currency, amount, payment_to_whom,
+                    purpose_of_payment, payment_format, due_date, payment_recipient_name=None,
+                    payment_phone_number=None, date_created=None, status_to_send=False, director_approval=None,
+                    accounting_approval=None):
         request_id = None
-        if 'date_created' not in kwargs:
-            kwargs['date_created'] = datetime.now(pytz.timezone('Europe/Moscow')).strftime('%Y-%m-%d %H:%M')
+        session = self.Session()
+        if date_created is None:
+            date_created = str(datetime.now(pytz.timezone('Europe/Moscow')).strftime('%Y-%m-%d %H:%M'))
         try:
-            new_request = Requests(**kwargs)
+            new_request = Requests(
+                manager_id=manager_id,
+                manager_name=manager_name,
+                phone_request=phone_request,
+                payment_date=payment_date,
+                currency=currency,
+                amount=amount,
+                payment_to_whom=payment_to_whom,
+                purpose_of_payment=purpose_of_payment,
+                payment_format=payment_format,
+                due_date=due_date,
+                status_to_send=status_to_send,
+                payment_recipient_name=payment_recipient_name,
+                payment_phone_number=payment_phone_number,
+                director_approval=director_approval,
+                accounting_approval=accounting_approval,
+                date_created=date_created
+            )
             session.add(new_request)
             session.commit()
             request_id = new_request.id
         except SQLAlchemyError as e:
             session.rollback()
-            logging.error(f"Error adding request: {e}")
+            logging(e)
+            return request_id
         finally:
             session.close()
-        return request_id
+            return request_id
 
     def update_request_approval(self, request_id, approval, role):
         session = self.Session()

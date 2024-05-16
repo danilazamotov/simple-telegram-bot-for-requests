@@ -270,7 +270,12 @@ def setup_routers(dp: Dispatcher):
     @router_manager.message(lambda message: message.text == "Создать заявку")
     async def start_request(message: types.Message, state: FSMContext):
         await state.clear()
-        await state.update_data(manager_id=message.from_user.id, manager_name=message.from_user.full_name)
+        try:
+            manager_id = message.from_user.id
+            manager_name = 'test' #message.from_user.full_name
+        except Exception as e:
+            logging.error(f"Error while adding request: {e}")
+        await state.update_data(manager_id=manager_id or None, manager_name=manager_name or None)
         await message.answer(
             "Для продолжения используйте кнопку ниже для отправки вашего контакта или введите номер вручную",
             reply_markup=get_keyboard_request_phone_manager_buttons())
@@ -434,7 +439,7 @@ def setup_routers(dp: Dispatcher):
                 await query.message.answer(f"Заявка отправлена директору, ей присвоено id-{request_id}",
                                            reply_markup=get_keyboard_main_manager_buttons())
                 if director_id:
-                    await send_summary_to_director(bot, director_id, request_id, data)
+                    await send_summary_to_director(bot, int(director_id), request_id, data)
                     db_manager.update_request_approval(request_id=request_id, approval=True, role='manager')
         except Exception as e:
             logging.error(f"Error while adding request: {e}")
